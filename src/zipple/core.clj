@@ -3,24 +3,34 @@
   (:import [java.util.zip
             ZipEntry
             ZipException
-            ZipOutputStream]
+            ZipOutputStream
+            ZipInputStream
+            ZipFile]
            [java.io File IOException]))
 
 
 
 (defn add-entry!
-  "Add an entry to a zip output stream"
-  [^ZipOutputStream zip
-   ^String path
-   content]
-  (.putNextEntry zip (ZipEntry. path))
-  (io/copy content zip)
-  (.closeEntry zip))
+  "Add an entry to a zip output stream.
+   Entries without content are assumed to be directories!"
+  ([^ZipOutputStream zip
+    ^String path]
+   (.putNextEntry zip (ZipEntry. path))
+   (.closeEntry zip))
+  ([^ZipOutputStream zip
+    ^String path
+    content]
+   (.putNextEntry zip (ZipEntry. path))
+   (io/copy content zip)
+   (.closeEntry zip)))
 
 (defmulti add
   "Add an entry to a zip output stream, special handling based on content."
-  (fn [_ _ content]
-    (class content)))
+  (fn
+    ([_ _]
+     ::directory)
+    ([_ _ content]
+      (class content))))
 
 (defmethod add java.io.File
   [^ZipOutputStream zip
@@ -29,14 +39,22 @@
   (if (.isDirectory file-or-dir)
     (let [abs-dir-path (.getAbsolutePath file-or-dir)]
       (doseq [f (file-seq file-or-dir)
-              :when (.isFile f)
-              :let [abs-file-path (.getAbsolutePath f)]]
-        (add-entry! zip
-                    (str zip-path
-                         (subs abs-file-path
-                          (count abs-dir-path)))
-                    f)))
+              :let [abs-file-path (.getAbsolutePath f)
+                    path (str zip-path
+                              (subs abs-file-path
+                                    (count abs-dir-path)))]]
+        (if (.isFile f)
+          (add-entry! zip
+                      path
+                      f)
+          (add-entry! zip
+                      (str path "/")))))
     (add-entry! zip zip-path file-or-dir)))
+
+(defmethod add ::directory
+  [^ZipOutputStream zip
+   ^String zip-path]
+  (add-entry! zip zip-path))
 
 (defmethod add :default
   [^ZipOutputStream zip
@@ -79,10 +97,17 @@
 (defmacro compose
   "Creates a zip at the given path.
    All subsequent args are expected to be pairs of path strings and
-   files/directories/strings."
+   files/directories/strings. A nil file is assumed to be an empty dir."
   [zip
    & contents]
   {:pre [(even? (count contents))]}
   `(dotozip ~zip
           ~@(for [[path content] (partition 2 contents)]
-              `(add ~path ~content))))
+              (if content
+                `(add ~path ~content)
+                `(add ~path)))))
+
+(defn zip-entry-seq
+  "Given a fille object or path, returns a seq of entries in a zip file."
+  [f]
+  (enumeration-seq (.entries (ZipFile. f))))
