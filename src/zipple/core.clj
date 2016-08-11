@@ -4,76 +4,76 @@
             ZipEntry
             ZipException
             ZipOutputStream]
-           [java.io File]))
+           [java.io File IOException]))
 
-(defn add-entry! [^ZipOutputStream zip
-                 ^String path
-                 content]
+
+
+(defn add-entry!
+  "Add an entry to a zip output stream"
+  [^ZipOutputStream zip
+   ^String path
+   content]
   (.putNextEntry zip (ZipEntry. path))
   (io/copy content zip)
   (.closeEntry zip))
 
-(defn zip<-file
-  "Add a file to a zip, with an optional new path."
-  ([^ZipOutputStream zip
-    ^File            f]
-   (zip<-file zip f (.getPath f)))
-  ([^ZipOutputStream zip
-    ^File            f
-    ^String          path]
-   {:pre [(not (.isDirectory f))]}
-   (add-entry! zip path f)))
+(defmulti add
+  "Add an entry to a zip output stream, special handling based on content."
+  (fn [_ _ content]
+    (class content)))
 
-(defn zip<-directory
-  "Recursively add dir and files to zip output.
-   Optional base-path will be used as prefix."
-  ([^ZipOutputStream zip
-    ^File            dir]
-   (zip<-directory zip dir ""))
-  ([^ZipOutputStream zip
-    ^File            dir
-    ^String          base-path]
-   {:pre [(.isDirectory dir)]}
-   (doseq [f (file-seq dir) :when (.isFile f)]
-     (add-entry! zip
-                 (str base-path (.getPath f))
-                 f))))
-
-(defn zip<-string
-  "Add an entry to a zip from a string"
+(defmethod add java.io.File
   [^ZipOutputStream zip
-   ^String          s
-   ^String          path]
-  (add-entry! zip path s))
+   ^String zip-path
+   ^File file-or-dir]
+  (if (.isDirectory file-or-dir)
+    (let [abs-dir-path (.getAbsolutePath file-or-dir)]
+      (doseq [f (file-seq file-or-dir)
+              :when (.isFile f)
+              :let [abs-file-path (.getAbsolutePath f)]]
+        (add-entry! zip
+                    (str zip-path
+                         (subs abs-file-path
+                          (count abs-dir-path)))
+                    f)))
+    (add-entry! zip zip-path file-or-dir)))
 
-(defn file? [maybe-file]
+(defmethod add java.lang.String
+  [^ZipOutputStream zip
+   ^String zip-path
+   ^String content]
+  (add-entry! zip zip-path content))
+
+(defn file?
+  "Is it a file?"
+  [maybe-file]
   (instance? java.io.File maybe-file))
 
-(defn compose-zip
-  "Creates a zip at the given path.
-   All subsequent args are expected to be pairs of path/base-path strings and
-   files/directories/strings.
+(defn zip-output-stream
+  "creates a new zip output stream.
+   f can be any valid arg to clojure.java.io/output-stream"
+  [f]
+  (ZipOutputStream. (io/output-stream f)))
 
-   ex: (compose-zip \"foo.zip\" ;; zip path
-             ;; base path + directory
-             \"foo/\" (io/file \"dev-resources/test\")
-             ;; full path + File
-             \"foo/some-file.txt\" (io/file \"some-file.txt\")
-             ;; full path + string
-             \"foo/bar.txt\" \"baz\")"
-  [zip-path
+(defmacro dozip
+  "Like doto, but takes a zip file/path, creates a stream,
+   applies the body fns, closes the stream and returns the file."
+  [zip & body]
+  `(let [zip-file# ~(if (file? zip)
+                      zip
+                      `(clojure.java.io/file ~zip))]
+     (with-open [zip# (zip-output-stream zip-file#)]
+       (doto zip#
+         ~@body))
+     zip-file#))
+
+(defmacro compose
+  "Creates a zip at the given path.
+   All subsequent args are expected to be pairs of path strings and
+   files/directories/strings."
+  [zip
    & contents]
   {:pre [(even? (count contents))]}
-  (with-open [zip (ZipOutputStream. (io/output-stream zip-path))]
-    (doseq [[path content] (partition 2 contents)]
-      (if (file? content)
-        (if (.isDirectory content)
-          (zip<-directory zip content path)
-          (zip<-file zip content path))
-        (zip<-string zip content path)))))
-
-(defn zip-directory
-  "Recursively zip a directory"
-  [dir-path zip-path]
-  (with-open [zip (ZipOutputStream. (io/output-stream zip-path))]
-    (zip<-directory zip (io/file dir-path))))
+  `(dozip ~zip
+          ~@(for [[path content] (partition 2 contents)]
+              `(add ~path ~content))))
