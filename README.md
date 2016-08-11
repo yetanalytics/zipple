@@ -2,11 +2,23 @@
 
 [![Build Status](https://travis-ci.org/yetanalytics/zipple.svg?branch=master)](https://travis-ci.org/yetanalytics/zipple)
 
-A Clojure library designed to ... well, that part is up to you.
+A tiny lib to make working with zips in Clojure a little less painful.
 
 ## Usage
 
-FIXME
+``` clojure
+(require '[zipple.core :refer :all])
+
+(dotozip "tmp/dotozip.zip"
+         ;; add a file
+         (add "dotozip/file1.txt" (io/file "dev-resources/test/file1.txt"))
+         ;; add a file by content
+         (add "dotozip/foo.txt" "bar")
+         ;; add a directory w/files
+         (add "dotozip/test" (io/file "dev-resources/test"))
+         ;; add an empty dir
+         (add "dotozip/empty/")) ;; => a java.io.File
+```
 
 ## License
 
