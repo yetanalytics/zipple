@@ -55,7 +55,7 @@
   [f]
   (ZipOutputStream. (io/output-stream f)))
 
-(defmacro dozip
+(defmacro dotozip
   "Like doto, but takes a zip file/path, creates a stream,
    applies the body fns, closes the stream and returns the file."
   [zip & body]
@@ -74,6 +74,6 @@
   [zip
    & contents]
   {:pre [(even? (count contents))]}
-  `(dozip ~zip
+  `(dotozip ~zip
           ~@(for [[path content] (partition 2 contents)]
               `(add ~path ~content))))
