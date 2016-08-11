@@ -38,10 +38,10 @@
                     f)))
     (add-entry! zip zip-path file-or-dir)))
 
-(defmethod add java.lang.String
+(defmethod add :default
   [^ZipOutputStream zip
    ^String zip-path
-   ^String content]
+   content]
   (add-entry! zip zip-path content))
 
 (defn file?
