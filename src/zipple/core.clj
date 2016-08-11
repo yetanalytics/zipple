@@ -67,6 +67,15 @@
          ~@body))
      zip-file#))
 
+(defmacro let-zip
+  [[sym f] & body]
+  `(let [zip-file# ~(if (file? f)
+                      f
+                      `(clojure.java.io/file ~f))]
+     (with-open [~sym (zip-output-stream zip-file#)]
+       ~@body)
+     zip-file#))
+
 (defmacro compose
   "Creates a zip at the given path.
    All subsequent args are expected to be pairs of path strings and
